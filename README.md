@@ -56,6 +56,11 @@ python nubert_control.py --address ADDRESS --source optical1
 python nubert_control.py --address ADDRESS --power off
 ```
 
+## Desktop Integration
+To automatically sync your Linux system volume with your Nubert speakers, run the provided sync script in the background:
+```bash
+./nubert_pulseaudio_sync.sh XX:XX:XX:XX:XX:XX &
+
 ## Platform Notes
 - **Linux:** If the script hangs or returns a "Not Permitted" error, restart your Bluetooth service: `sudo systemctl restart bluetooth`.
 - **macOS:** You must use the UUID provided by the `--scan` command. Hardware MAC addresses are hidden by the OS.

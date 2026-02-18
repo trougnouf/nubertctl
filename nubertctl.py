@@ -76,7 +76,7 @@ async def main():
 
     if args.scan:
         print("Scanning for Nubert devices...")
-        for d in await BleakScanner.discover(timeout=4.0):
+        for d in await BleakScanner.discover(timeout=10.0):
             if d.name and any(x in d.name.lower() for x in ["nubert", "x-", "xs-"]):
                 print(f"FOUND: {d.name} [{d.address}]")
         return
