@@ -59,7 +59,9 @@ python nubert_control.py --address ADDRESS --power off
 ## Desktop Integration
 To automatically sync your Linux system volume with your Nubert speakers, run the provided sync script in the background:
 ```bash
-./nubert_pulseaudio_sync.sh XX:XX:XX:XX:XX:XX &
+./nubert_pulseaudio_sync.sh XX:XX:XX:XX:XX:XX &```
+
+Note that the AUR package includes a systemd unit which can be enabled like `systemctl --user enable 'nubert-sync@51:FA:D1:39:F8:AB.service'`
 
 ## Platform Notes
 - **Linux:** If the script hangs or returns a "Not Permitted" error, restart your Bluetooth service: `sudo systemctl restart bluetooth`.
