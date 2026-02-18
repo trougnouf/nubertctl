@@ -96,7 +96,7 @@ async def main():
 
     print(f"Connecting to {args.address}...")
     try:
-        async with BleakClient(args.address) as client:
+        async with BleakClient(args.address, timeout=20.0) as client:
             cfg = None
             for name, p_cfg in PROTOCOLS.items():
                 if client.services.get_service(p_cfg["service"]):
