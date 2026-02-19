@@ -1,0 +1,13 @@
+[Unit]
+Description=Nubert Volume Sync for speaker %i
+After=pipewire.service pipewire-pulse.service nubert-daemon@%i.service
+Requires=nubert-daemon@%i.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/nubert_pulseaudio_sync %i
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

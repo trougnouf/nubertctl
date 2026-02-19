@@ -1,77 +1,68 @@
 # nubertctl - Nubert Speaker Control (CLI)
 
-An unofficial cross-platform Python command-line utility to control Nubert speakers (including X, XS, and A-Series) via Bluetooth Low Energy (BLE). This tool enables integration of Nubert hardware with desktop environments where no official client is provided.
+An unofficial cross-platform Python utility to control Nubert speakers (X, XS, and A-Series) via Bluetooth Low Energy (BLE).
 
 ## Features
-- **Power Control:** Toggle speakers between On and Standby.
-- **Source Selection:** Switch between Bluetooth, Optical, XLR, AUX, USB, etc.
-- **Volume Control:** Set absolute volume levels (0–100).
-- **Relative Volume:** Increase/decrease volume using a local state cache (bypassing unreliable BLE read requests on some OSs).
-- **Auto-Protocol Detection:** Automatically handles multiple hardware generations (A600, X-Series, XS-Series).
+- **Daemon Mode:** Persistent BLE connection via Unix socket for instant response times.
+- **PulseAudio/PipeWire Sync:** Maps a virtual system volume slider to physical speaker gain.
+- **Auto-Protocol Detection:** Supports A600, X-Series, and XS-Series hardware.
+- **Source & Power Control:** Full control over inputs and standby states.
 
 ## Installation
 
-### Arch Linux
+### Arch Linux (AUR)
+Install `nubertctl-git`. The package includes the CLI tool, the sync script, and systemd units.
 ```bash
-sudo pacman -S python-bleak
+# Example using yay
+yay -S nubertctl-git
 ```
 
-### Windows / macOS / Other Linux
-```bash
-pip install bleak
-```
+### Manual Installation
+1. **Dependencies:**
+   ```bash
+
+   pip install bleak 
+   # For PulseAudio/PipeWire sync:
+   sudo pacman -S socat  # Or your distro equivalent (e.g., apt install socat)
+   ```
 
 ## Usage
 
-### 1. Scan for your Master speaker
-Use this to find your speaker's address:
+### 1. Find your Speaker
 ```bash
-python nubert_control.py --scan
+nubertctl --scan
 ```
-*Note: On macOS, this will return a UUID instead of a MAC address. Use that UUID in the next steps.*
 
-### 2. Basic Commands
-Replace `ADDRESS` with your speaker's MAC address or UUID.
+### 2. Desktop Integration (Linux)
+The most robust way to use this on Linux is via the provided systemd services. This creates a persistent background connection so volume changes are instant.
 
+1. **Enable the Daemon** (Replaces `XX:...` with your MAC address):
+   ```bash
+   systemctl --user enable --now nubert-daemon@XX:XX:XX:XX:XX:XX.service
+   ```
+2. **Enable the Volume Sync**:
+   ```bash
+   systemctl --user enable --now nubert-sync@XX:XX:XX:XX:XX:XX.service
+   ```
+
+You will now see a **"Nubert_Speaker_Remote"** output in your system sound settings. Setting this as default allows your media keys to control the hardware speakers directly.
+
+### 3. Manual CLI Commands
 **Set Volume (0-100):**
 ```bash
-python nubert_control.py --address ADDRESS --volume 45
-```
-
-**Relative Volume:**
-The script tracks volume in `~/.nubert_state` to allow instant increments.
-```bash
-python nubert_control.py --address ADDRESS --volume-up
-python nubert_control.py --address ADDRESS --volume-down 10
+nubertctl --address ADDRESS --volume 45
 ```
 
 **Switch Source:**
-Supported: `aux`, `bluetooth`, `xlr`, `coax1`, `coax2`, `optical1`, `optical2`, `usb`, `port`.
+`aux`, `bluetooth`, `xlr`, `coax1`, `coax2`, `optical1`, `optical2`, `usb`, `port`.
 ```bash
-python nubert_control.py --address ADDRESS --source optical1
+nubertctl --address ADDRESS --source usb
 ```
-
-**Power Control:**
-```bash
-python nubert_control.py --address ADDRESS --power off
-```
-
-## Desktop Integration
-To automatically sync your Linux system volume with your Nubert speakers, run the provided sync script in the background:
-```bash
-./nubert_pulseaudio_sync.sh XX:XX:XX:XX:XX:XX &```
-
-Note that the AUR package includes a systemd unit which can be enabled like `systemctl --user enable 'nubert-sync@51:FA:D1:39:F8:AB.service'`
 
 ## Platform Notes
-- **Linux:** If the script hangs or returns a "Not Permitted" error, restart your Bluetooth service: `sudo systemctl restart bluetooth`.
-- **macOS:** You must use the UUID provided by the `--scan` command. Hardware MAC addresses are hidden by the OS.
-- **Windows:** You may need to pair the speaker in Windows Bluetooth Settings before the script can communicate with it.
+- **Linux:** Uses `socat` and `pactl` for volume synchronization.
+- **macOS:** Use the UUID from `--scan` instead of a MAC address.
+- **Windows:** Pair the device in System Settings first.
 
 ## Disclaimer
-This project is an independent, unofficial community development. It is not affiliated with, authorized, or endorsed by Nubert electronic GmbH. "Nubert" is a registered trademark of Nubert electronic GmbH. 
-
-This tool is provided for **interoperability purposes** under the exceptions provided by **EU Directive 2009/24/EC**. It was developed by analyzing publicly available communication protocols to allow the hardware to function with unsupported operating systems.
-
-## License
-This project is released under the **GNU General Public License v3.0 (GPLv3)**. See the LICENSE file for details.
+This is an unofficial community project. "Nubert" is a trademark of Nubert electronic GmbH. This tool is provided for interoperability purposes under EU Directive 2009/24/EC.
