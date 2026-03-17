@@ -1,10 +1,10 @@
 [Unit]
-Description=Nubert Bluetooth Daemon for speaker %i
+Description=Nubert Bluetooth Daemon for speaker %I
 After=bluetooth.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/nubertctl --daemon --address %i
+ExecStart=/usr/bin/nubertctl --daemon --address "%I"
 Restart=on-failure
 RestartSec=5
 

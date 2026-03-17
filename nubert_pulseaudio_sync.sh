@@ -9,15 +9,17 @@ SOCKET="/tmp/nubert.sock"
 
 # 0. Basic argument check
 if [[ -z "$ADDR" ]]; then
-    echo "Usage: $0 51:FA:D1:39:F8:AB"
+    echo "Usage: $0 "nubert X-2 2272""
     exit 1
 fi
+
+ESCAPED_ADDR=$(systemd-escape "$ADDR")
 
 # 1. Ensure the daemon socket exists
 if [[ ! -S "$SOCKET" ]]; then
     echo "Error: Daemon socket not found at $SOCKET."
-    echo "Please ensure the nubert-daemon@$ADDR.service is running."
-    echo "You can start it with: systemctl --user start nubert-daemon@$ADDR.service"
+    echo "Please ensure the nubert-daemon@${ESCAPED_ADDR}.service is running."
+    echo "You can start it with: systemctl --user start nubert-daemon@${ESCAPED_ADDR}.service"
     exit 1
 fi
 
