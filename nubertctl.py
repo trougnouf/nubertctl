@@ -66,7 +66,7 @@ async def resolve_target(target):
         return target
 
     print(f"Scanning to resolve name '{target}'...")
-    devices = await BleakScanner.discover(timeout=10.0)
+    devices = await BleakScanner.discover(timeout=30.0)
     for d in devices:
         if d.name and d.name == target:
             print(f"Found '{target}' at {d.address}")
