@@ -78,13 +78,15 @@ pactl subscribe | stdbuf -oL grep -E "sink|sink-input" | while read -r event; do
 
     # Handle New Streams: Redirect them to the physical hardware sink
     if echo "$event" | grep -q "new" && echo "$event" | grep -q "sink-input"; then
-        echo "New stream detected, routing to $BASE_SINK"
-        # Iterate over all sink inputs and move them if they are not already on BASE_SINK
+        # Get the exact numerical ID of our virtual Nubert sink
+        VIRTUAL_INDEX=$(pactl list short sinks | grep "$VIRTUAL_NAME" | awk '{print $1}')
+        
         pactl list short sink-inputs | awk '{print $1, $2}' | while read -r stream_id_and_sink; do
             stream_id=$(echo "$stream_id_and_sink" | awk '{print $1}')
             current_sink=$(echo "$stream_id_and_sink" | awk '{print $2}')
-            if [[ "$current_sink" != "$BASE_SINK" ]]; then
-                # Only move if it's not already there to avoid unnecessary operations/errors
+            
+            # ONLY move the stream to Nubert hardware if it was playing to the virtual control sink
+            if [[ "$current_sink" == "$VIRTUAL_INDEX" ]]; then
                 pactl move-sink-input "$stream_id" "$BASE_SINK" 2>/dev/null
             fi
         done
