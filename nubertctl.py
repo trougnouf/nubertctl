@@ -15,6 +15,10 @@ STATE_FILE = os.path.expanduser("~/.nubert_state")
 SOCKET_PATH = "/tmp/nubert.sock"
 DEFAULT_VOL = 50  # Starting volume if no state is found
 
+# --- Global state variables ---
+_bt_client = None
+_bt_cfg = None
+
 # --- Protocol Definitions from Decompiled Code ---
 PROTOCOLS = {
     "A600": {  # X-2 / A-Series
@@ -108,7 +112,8 @@ def save_state(address, key, value):
 
 
 # ---------- Daemon mode ----------
-async def handle_client(reader, writer, client, write_char, use_response, target):
+async def handle_client(reader, writer, target):
+    global _bt_client, _bt_cfg
     data = await reader.read(100)
     if not data:
         try:
@@ -120,17 +125,28 @@ async def handle_client(reader, writer, client, write_char, use_response, target
     try:
         vol = int(data.decode().strip())
         vol = max(0, min(100, vol))
-        await client.write_gatt_char(
-            write_char, bytearray([CMD_VOLUME_SET, 0x01, vol]), response=use_response
-        )
-        try:
-            save_state(target, "volume", vol)
-        except:
-            pass
-
-        print(f"Volume set to {vol}")
+        
+        # Only attempt to write if the background task has connected the speaker
+        if _bt_client and _bt_client.is_connected and _bt_cfg:
+            await _bt_client.write_gatt_char(
+                _bt_cfg["write"], bytearray([CMD_VOLUME_SET, 0x01, vol]), response=_bt_cfg["use_response"]
+            )
+            try:
+                save_state(target, "volume", vol)
+            except:
+                pass
+            print(f"Volume set to {vol}")
+        else:
+            print(f"Ignored volume {vol}, speaker not connected. Waiting for reconnect...")
+            
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error writing to speaker: {e}")
+        # Force a disconnect to trigger the auto-reconnect loop
+        if _bt_client:
+            try:
+                await _bt_client.disconnect()
+            except:
+                pass
     finally:
         try:
             writer.close()
@@ -139,56 +155,82 @@ async def handle_client(reader, writer, client, write_char, use_response, target
             pass
 
 
-async def daemon_main(target):
-    address = await resolve_target(target)
-    if not address:
-        sys.exit(1)  # Exit so systemd can trigger a restart and rescan later
+async def maintain_ble_connection(target):
+    global _bt_client, _bt_cfg
+    while True:
+        try:
+            # Re-resolve on every loop iteration to survive MAC address rotations
+            address = await resolve_target(target)
+            if not address:
+                print("Speaker not found, retrying in 10s...")
+                await asyncio.sleep(10)
+                continue
 
-    print(f"Connecting to {address}...")
-    try:
-        async with BleakClient(address, timeout=20.0) as client:
-            cfg = None
-            for name, p_cfg in PROTOCOLS.items():
+            print(f"Connecting to {address}...")
+            disconnect_event = asyncio.Event()
+
+            # Callback explicitly triggered by OS/Bleak when the connection drops
+            def on_disconnect(client):
+                print("Bluetooth disconnected callback triggered!")
+                disconnect_event.set()
+
+            async with BleakClient(address, timeout=20.0, disconnected_callback=on_disconnect) as client:
+                cfg = None
                 try:
                     if client.services is None:
                         await client.get_services()
                 except:
                     pass
 
-                if client.services.get_service(p_cfg["service"]):
-                    print(f"Detected Protocol: {name}")
-                    cfg = p_cfg
-                    break
+                for name, p_cfg in PROTOCOLS.items():
+                    if client.services and client.services.get_service(p_cfg["service"]):
+                        print(f"Detected Protocol: {name}")
+                        cfg = p_cfg
+                        break
 
-            if not cfg:
-                print("Unsupported device")
-                sys.exit(1)
+                if not cfg:
+                    print("Unsupported device, retrying...")
+                    await asyncio.sleep(10)
+                    continue
 
-            write_char = cfg["write"]
-            use_response = cfg["use_response"]
+                _bt_client = client
+                _bt_cfg = cfg
+                print("Bluetooth connected and ready.")
 
-            if os.path.exists(SOCKET_PATH):
-                try:
-                    os.unlink(SOCKET_PATH)
-                except:
-                    pass
+                # Block here until the disconnected callback sets the event
+                await disconnect_event.wait()
+                
+        except BleakError as e:
+            print(f"BLE Error: {e}")
+        except Exception as e:
+            print(f"Connection loop error: {e}")
+        finally:
+            _bt_client = None
+            _bt_cfg = None
 
-            server = await asyncio.start_unix_server(
-                lambda r, w: handle_client(
-                    r, w, client, write_char, use_response, target
-                ),
-                path=SOCKET_PATH,
-            )
-            print(f"Daemon listening on {SOCKET_PATH}")
-            async with server:
-                await server.serve_forever()
+        print("Waiting 5s before reconnecting...")
+        await asyncio.sleep(5)
 
-    except BleakError as e:
-        print(f"Bluetooth Error (daemon): {e}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Daemon error: {e}")
-        sys.exit(1)
+
+async def daemon_main(target):
+    if os.path.exists(SOCKET_PATH):
+        try:
+            os.unlink(SOCKET_PATH)
+        except:
+            pass
+
+    # Start the server instantly so PulseAudio sync never gets "Connection refused"
+    server = await asyncio.start_unix_server(
+        lambda r, w: handle_client(r, w, target),
+        path=SOCKET_PATH,
+    )
+    print(f"Daemon listening on {SOCKET_PATH}")
+
+    # Launch BLE maintenance loop in the background
+    asyncio.create_task(maintain_ble_connection(target))
+
+    async with server:
+        await server.serve_forever()
 
 
 # ---------- One‑shot mode (original) ----------
