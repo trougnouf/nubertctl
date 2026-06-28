@@ -117,6 +117,9 @@ async def handle_client(reader, writer, target):
         # 1. Parse JSON payload (or fallback to plain int for the bash script)
         try:
             payload = json.loads(text)
+            # Prevent json.loads from parsing a raw string/int into a non-dict type
+            if not isinstance(payload, dict):
+                payload = {"volume": int(text)}
         except ValueError:
             payload = {"volume": int(text)}
             
