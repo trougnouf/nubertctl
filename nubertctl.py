@@ -14,6 +14,35 @@ from bleak.exc import BleakError
 STATE_FILE = os.path.expanduser("~/.nubert_state")
 SOCKET_PATH = "/tmp/nubert.sock"
 DEFAULT_VOL = 50
+NAME_CACHE_FILE = os.path.expanduser("~/.nubert_addr_cache")
+
+
+def load_name_cache():
+    try:
+        with open(NAME_CACHE_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_name_cache(name, address):
+    cache = load_name_cache()
+    cache[name] = address
+    try:
+        with open(NAME_CACHE_FILE, "w") as f:
+            json.dump(cache, f)
+    except Exception:
+        pass
+
+
+def clear_name_cache(name):
+    cache = load_name_cache()
+    if cache.pop(name, None) is not None:
+        try:
+            with open(NAME_CACHE_FILE, "w") as f:
+                json.dump(cache, f)
+        except Exception:
+            pass
 
 # --- Global state variables for Daemon ---
 _bt_client = None
@@ -57,11 +86,17 @@ def is_mac_or_uuid(s):
 async def resolve_target(target):
     if is_mac_or_uuid(target):
         return target
+    cached = load_name_cache().get(target)
+    if cached:
+        print(f"Using cached address {cached} for '{target}'"
+              f" (rescan: rm {NAME_CACHE_FILE})")
+        return cached
     print(f"Scanning to resolve name '{target}'...")
     devices = await BleakScanner.discover(timeout=30.0)
     for d in devices:
         if d.name and d.name == target:
             print(f"Found '{target}' at {d.address}")
+            save_name_cache(target, d.address)
             return d.address
     return None
 
@@ -176,6 +211,7 @@ async def handle_client(reader, writer, target):
 async def maintain_ble_connection(target):
     global _bt_client, _bt_cfg
     while True:
+        address = None
         try:
             address = await resolve_target(target)
             if not address:
@@ -217,7 +253,12 @@ async def maintain_ble_connection(target):
                 await disconnect_event.wait()
                 
         except Exception as e:
-            pass
+            # If the cached address stops working (device replaced/re-flashed),
+            # drop the cache so the next round resolves the name again.
+            if address and load_name_cache().get(target) == address:
+                print(f"Connect to cached address {address} failed; "
+                      f"clearing name cache to rescan next round.")
+                clear_name_cache(target)
         finally:
             _bt_client = None
             _bt_cfg = None
