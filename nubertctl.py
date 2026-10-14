@@ -5,6 +5,7 @@ import json
 import os
 import re
 import socket
+import subprocess
 import sys
 
 from bleak import BleakClient, BleakScanner
@@ -98,6 +99,43 @@ async def resolve_target(target):
             print(f"Found '{target}' at {d.address}")
             save_name_cache(target, d.address)
             return d.address
+    return None
+
+def _bluetoothctl_output(args):
+    try:
+        return subprocess.run(
+            ["bluetoothctl", *args], capture_output=True, text=True, timeout=10
+        ).stdout
+    except Exception:
+        return ""
+
+async def resolve_via_bluez(target):
+    """Resolve the speaker through BlueZ's known-device list instead of
+    advertisements. A speaker whose BLE slot is already occupied (e.g. by
+    an orphaned link left behind by a killed daemon) never advertises, so
+    scanning alone can never find it. If such a stale connection exists,
+    drop it so we can take over."""
+    out = await asyncio.to_thread(_bluetoothctl_output, ["devices"])
+    matches = []
+    for line in out.splitlines():
+        line = re.sub(r"\x1b\[[0-9;]*m", "", line)
+        parts = line.split(maxsplit=2)
+        if len(parts) == 3 and parts[0] == "Device" and parts[2] == target:
+            matches.append(parts[1])
+    for address in reversed(matches):
+        info = await asyncio.to_thread(_bluetoothctl_output, ["info", address])
+        connected = any(
+            l.strip().lower().startswith("connected:") and l.strip().endswith("yes")
+            for l in info.splitlines()
+        )
+        if connected:
+            print(f"Dropping stale BlueZ connection to '{target}' at {address}.")
+            await asyncio.to_thread(_bluetoothctl_output, ["disconnect", address])
+            await asyncio.sleep(2)
+        else:
+            print(f"Found '{target}' at {address} via BlueZ known devices.")
+        save_name_cache(target, address)
+        return address
     return None
 
 def load_state(address):
@@ -214,6 +252,11 @@ async def maintain_ble_connection(target):
         address = None
         try:
             address = await resolve_target(target)
+            if not address:
+                # Scanning sees only advertising speakers; one whose BLE slot
+                # is already held by a stale BlueZ connection is invisible to
+                # it. Fall back to BlueZ's known-device list.
+                address = await resolve_via_bluez(target)
             if not address:
                 print("Speaker not found, retrying in 10s...")
                 await asyncio.sleep(10)
